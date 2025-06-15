@@ -765,7 +765,7 @@ class FastAPI(Starlette):
             ),
         ] = None,
         generate_unique_id_function: Annotated[
-            Callable[[routing.APIRoute], str],
+            routing.GenerateUniqueIdFn,
             Doc(
                 """
                 Customize the function used to generate unique IDs for the *path
@@ -1081,7 +1081,7 @@ class FastAPI(Starlette):
         ),
         name: Optional[str] = None,
         openapi_extra: Optional[Dict[str, Any]] = None,
-        generate_unique_id_function: Callable[[routing.APIRoute], str] = Default(
+        generate_unique_id_function: routing.GenerateUniqueIdFn = Default(
             generate_unique_id
         ),
     ) -> None:
@@ -1109,7 +1109,9 @@ class FastAPI(Starlette):
             response_class=response_class,
             name=name,
             openapi_extra=openapi_extra,
-            generate_unique_id_function=generate_unique_id_function,
+            generate_unique_id_function=routing.unify_generate_unique_id_fn(
+                generate_unique_id_function
+            ),
         )
 
     def api_route(
@@ -1137,7 +1139,7 @@ class FastAPI(Starlette):
         response_class: Type[Response] = Default(JSONResponse),
         name: Optional[str] = None,
         openapi_extra: Optional[Dict[str, Any]] = None,
-        generate_unique_id_function: Callable[[routing.APIRoute], str] = Default(
+        generate_unique_id_function: routing.GenerateUniqueIdFn = Default(
             generate_unique_id
         ),
     ) -> Callable[[DecoratedCallable], DecoratedCallable]:
@@ -1166,7 +1168,9 @@ class FastAPI(Starlette):
                 response_class=response_class,
                 name=name,
                 openapi_extra=openapi_extra,
-                generate_unique_id_function=generate_unique_id_function,
+                generate_unique_id_function=routing.unify_generate_unique_id_fn(
+                    generate_unique_id_function
+                ),
             )
             return func
 
@@ -1411,7 +1415,7 @@ class FastAPI(Starlette):
             ),
         ] = None,
         generate_unique_id_function: Annotated[
-            Callable[[routing.APIRoute], str],
+            routing.GenerateUniqueIdFn,
             Doc(
                 """
                 Customize the function used to generate unique IDs for the *path
@@ -1774,7 +1778,7 @@ class FastAPI(Starlette):
             ),
         ] = None,
         generate_unique_id_function: Annotated[
-            Callable[[routing.APIRoute], str],
+            routing.GenerateUniqueIdFn,
             Doc(
                 """
                 Customize the function used to generate unique IDs for the *path
@@ -2147,7 +2151,7 @@ class FastAPI(Starlette):
             ),
         ] = None,
         generate_unique_id_function: Annotated[
-            Callable[[routing.APIRoute], str],
+            routing.GenerateUniqueIdFn,
             Doc(
                 """
                 Customize the function used to generate unique IDs for the *path
@@ -2525,7 +2529,7 @@ class FastAPI(Starlette):
             ),
         ] = None,
         generate_unique_id_function: Annotated[
-            Callable[[routing.APIRoute], str],
+            routing.GenerateUniqueIdFn,
             Doc(
                 """
                 Customize the function used to generate unique IDs for the *path
@@ -2903,7 +2907,7 @@ class FastAPI(Starlette):
             ),
         ] = None,
         generate_unique_id_function: Annotated[
-            Callable[[routing.APIRoute], str],
+            routing.GenerateUniqueIdFn,
             Doc(
                 """
                 Customize the function used to generate unique IDs for the *path
@@ -3276,7 +3280,7 @@ class FastAPI(Starlette):
             ),
         ] = None,
         generate_unique_id_function: Annotated[
-            Callable[[routing.APIRoute], str],
+            routing.GenerateUniqueIdFn,
             Doc(
                 """
                 Customize the function used to generate unique IDs for the *path
@@ -3649,7 +3653,7 @@ class FastAPI(Starlette):
             ),
         ] = None,
         generate_unique_id_function: Annotated[
-            Callable[[routing.APIRoute], str],
+            routing.GenerateUniqueIdFn,
             Doc(
                 """
                 Customize the function used to generate unique IDs for the *path
@@ -4022,7 +4026,7 @@ class FastAPI(Starlette):
             ),
         ] = None,
         generate_unique_id_function: Annotated[
-            Callable[[routing.APIRoute], str],
+            routing.GenerateUniqueIdFn,
             Doc(
                 """
                 Customize the function used to generate unique IDs for the *path
@@ -4400,7 +4404,7 @@ class FastAPI(Starlette):
             ),
         ] = None,
         generate_unique_id_function: Annotated[
-            Callable[[routing.APIRoute], str],
+            routing.GenerateUniqueIdFn,
             Doc(
                 """
                 Customize the function used to generate unique IDs for the *path

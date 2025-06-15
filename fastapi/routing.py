@@ -19,6 +19,7 @@ from typing import (
     Tuple,
     Type,
     Union,
+    cast,
 )
 
 from fastapi import params
@@ -74,6 +75,34 @@ from starlette.routing import Mount as Mount  # noqa
 from starlette.types import AppType, ASGIApp, Lifespan, Scope
 from starlette.websockets import WebSocket
 from typing_extensions import Annotated, Doc, deprecated
+
+GenerateUniqueIdFnWithoutMethod = Callable[["APIRoute"], str]
+
+GenerateUniqueIdFnWithMethod = Callable[["APIRoute", Optional[str]], str]
+
+GenerateUniqueIdFn = Union[
+    GenerateUniqueIdFnWithoutMethod, GenerateUniqueIdFnWithMethod
+]
+
+GenerateUniqueIdFnOrDefault = Union[DefaultPlaceholder, GenerateUniqueIdFnWithMethod]
+
+
+def unify_generate_unique_id_fn(
+    fn: Union[DefaultPlaceholder, GenerateUniqueIdFn],
+) -> GenerateUniqueIdFnWithMethod:
+    if isinstance(fn, DefaultPlaceholder):
+        return fn  # type: ignore
+
+    signature = inspect.signature(fn)
+
+    if len(signature.parameters) == 1:
+
+        def wrapped(route: "APIRoute", _: Optional[str]) -> str:
+            return cast(GenerateUniqueIdFnWithoutMethod, fn)(route)
+
+        return wrapped
+
+    return cast(GenerateUniqueIdFnWithMethod, fn)
 
 
 def _prepare_response_content(
@@ -456,9 +485,9 @@ class APIRoute(routing.Route):
         dependency_overrides_provider: Optional[Any] = None,
         callbacks: Optional[List[BaseRoute]] = None,
         openapi_extra: Optional[Dict[str, Any]] = None,
-        generate_unique_id_function: Union[
-            Callable[["APIRoute"], str], DefaultPlaceholder
-        ] = Default(generate_unique_id),
+        generate_unique_id_function: GenerateUniqueIdFnOrDefault = Default(
+            generate_unique_id
+        ),
     ) -> None:
         self.path = path
         self.endpoint = endpoint
@@ -484,7 +513,14 @@ class APIRoute(routing.Route):
         self.dependency_overrides_provider = dependency_overrides_provider
         self.callbacks = callbacks
         self.openapi_extra = openapi_extra
-        self.generate_unique_id_function = generate_unique_id_function
+        self.generate_unique_id_function: GenerateUniqueIdFnOrDefault = (
+            generate_unique_id_function
+        )
+        self.current_generate_unique_id = (
+            cast(GenerateUniqueIdFnWithMethod, generate_unique_id_function.value)
+            if isinstance(generate_unique_id_function, DefaultPlaceholder)
+            else generate_unique_id_function
+        )
         self.tags = tags or []
         self.responses = responses or {}
         self.name = get_name(endpoint) if name is None else name
@@ -492,13 +528,9 @@ class APIRoute(routing.Route):
         if methods is None:
             methods = ["GET"]
         self.methods: Set[str] = {method.upper() for method in methods}
-        if isinstance(generate_unique_id_function, DefaultPlaceholder):
-            current_generate_unique_id: Callable[[APIRoute], str] = (
-                generate_unique_id_function.value
-            )
-        else:
-            current_generate_unique_id = generate_unique_id_function
-        self.unique_id = self.operation_id or current_generate_unique_id(self)
+        self.unique_id = self.operation_id or self.current_generate_unique_id(
+            self, None
+        )
         # normalize enums e.g. http.HTTPStatus
         if isinstance(status_code, IntEnum):
             status_code = int(status_code)
@@ -819,7 +851,7 @@ class APIRouter(routing.Router):
             ),
         ] = True,
         generate_unique_id_function: Annotated[
-            Callable[[APIRoute], str],
+            GenerateUniqueIdFn,
             Doc(
                 """
                 Customize the function used to generate unique IDs for the *path
@@ -857,7 +889,9 @@ class APIRouter(routing.Router):
         self.dependency_overrides_provider = dependency_overrides_provider
         self.route_class = route_class
         self.default_response_class = default_response_class
-        self.generate_unique_id_function = generate_unique_id_function
+        self.generate_unique_id_function: GenerateUniqueIdFnOrDefault = (
+            unify_generate_unique_id_fn(generate_unique_id_function)
+        )
 
     def route(
         self,
@@ -908,9 +942,9 @@ class APIRouter(routing.Router):
         route_class_override: Optional[Type[APIRoute]] = None,
         callbacks: Optional[List[BaseRoute]] = None,
         openapi_extra: Optional[Dict[str, Any]] = None,
-        generate_unique_id_function: Union[
-            Callable[[APIRoute], str], DefaultPlaceholder
-        ] = Default(generate_unique_id),
+        generate_unique_id_function: GenerateUniqueIdFnOrDefault = Default(
+            generate_unique_id
+        ),
     ) -> None:
         route_class = route_class_override or self.route_class
         responses = responses or {}
@@ -928,7 +962,8 @@ class APIRouter(routing.Router):
         if callbacks:
             current_callbacks.extend(callbacks)
         current_generate_unique_id = get_value_or_default(
-            generate_unique_id_function, self.generate_unique_id_function
+            generate_unique_id_function,
+            self.generate_unique_id_function,
         )
         route = route_class(
             self.prefix + path,
@@ -986,9 +1021,7 @@ class APIRouter(routing.Router):
         name: Optional[str] = None,
         callbacks: Optional[List[BaseRoute]] = None,
         openapi_extra: Optional[Dict[str, Any]] = None,
-        generate_unique_id_function: Callable[[APIRoute], str] = Default(
-            generate_unique_id
-        ),
+        generate_unique_id_function: GenerateUniqueIdFn = Default(generate_unique_id),
     ) -> Callable[[DecoratedCallable], DecoratedCallable]:
         def decorator(func: DecoratedCallable) -> DecoratedCallable:
             self.add_api_route(
@@ -1016,7 +1049,9 @@ class APIRouter(routing.Router):
                 name=name,
                 callbacks=callbacks,
                 openapi_extra=openapi_extra,
-                generate_unique_id_function=generate_unique_id_function,
+                generate_unique_id_function=unify_generate_unique_id_fn(
+                    generate_unique_id_function
+                ),
             )
             return func
 
@@ -1216,7 +1251,7 @@ class APIRouter(routing.Router):
             ),
         ] = True,
         generate_unique_id_function: Annotated[
-            Callable[[APIRoute], str],
+            GenerateUniqueIdFn,
             Doc(
                 """
                 Customize the function used to generate unique IDs for the *path
@@ -1269,6 +1304,9 @@ class APIRouter(routing.Router):
                     )
         if responses is None:
             responses = {}
+        generate_unique_id_function = unify_generate_unique_id_fn(
+            generate_unique_id_function
+        )
         for route in router.routes:
             if isinstance(route, APIRoute):
                 combined_responses = {**responses, **route.responses}
@@ -1293,11 +1331,13 @@ class APIRouter(routing.Router):
                     current_callbacks.extend(callbacks)
                 if route.callbacks:
                     current_callbacks.extend(route.callbacks)
-                current_generate_unique_id = get_value_or_default(
-                    route.generate_unique_id_function,
-                    router.generate_unique_id_function,
-                    generate_unique_id_function,
-                    self.generate_unique_id_function,
+                current_generate_unique_id: GenerateUniqueIdFnOrDefault = (
+                    get_value_or_default(
+                        route.generate_unique_id_function,
+                        router.generate_unique_id_function,
+                        unify_generate_unique_id_fn(generate_unique_id_function),
+                        self.generate_unique_id_function,
+                    )
                 )
                 self.add_api_route(
                     prefix + route.path,
@@ -1680,7 +1720,7 @@ class APIRouter(routing.Router):
             ),
         ] = None,
         generate_unique_id_function: Annotated[
-            Callable[[APIRoute], str],
+            GenerateUniqueIdFn,
             Doc(
                 """
                 Customize the function used to generate unique IDs for the *path
@@ -2057,7 +2097,7 @@ class APIRouter(routing.Router):
             ),
         ] = None,
         generate_unique_id_function: Annotated[
-            Callable[[APIRoute], str],
+            GenerateUniqueIdFn,
             Doc(
                 """
                 Customize the function used to generate unique IDs for the *path
@@ -2439,7 +2479,7 @@ class APIRouter(routing.Router):
             ),
         ] = None,
         generate_unique_id_function: Annotated[
-            Callable[[APIRoute], str],
+            GenerateUniqueIdFn,
             Doc(
                 """
                 Customize the function used to generate unique IDs for the *path
@@ -2821,7 +2861,7 @@ class APIRouter(routing.Router):
             ),
         ] = None,
         generate_unique_id_function: Annotated[
-            Callable[[APIRoute], str],
+            GenerateUniqueIdFn,
             Doc(
                 """
                 Customize the function used to generate unique IDs for the *path
@@ -3198,7 +3238,7 @@ class APIRouter(routing.Router):
             ),
         ] = None,
         generate_unique_id_function: Annotated[
-            Callable[[APIRoute], str],
+            GenerateUniqueIdFn,
             Doc(
                 """
                 Customize the function used to generate unique IDs for the *path
@@ -3575,7 +3615,7 @@ class APIRouter(routing.Router):
             ),
         ] = None,
         generate_unique_id_function: Annotated[
-            Callable[[APIRoute], str],
+            GenerateUniqueIdFn,
             Doc(
                 """
                 Customize the function used to generate unique IDs for the *path
@@ -3957,7 +3997,7 @@ class APIRouter(routing.Router):
             ),
         ] = None,
         generate_unique_id_function: Annotated[
-            Callable[[APIRoute], str],
+            GenerateUniqueIdFn,
             Doc(
                 """
                 Customize the function used to generate unique IDs for the *path
@@ -4339,7 +4379,7 @@ class APIRouter(routing.Router):
             ),
         ] = None,
         generate_unique_id_function: Annotated[
-            Callable[[APIRoute], str],
+            GenerateUniqueIdFn,
             Doc(
                 """
                 Customize the function used to generate unique IDs for the *path
