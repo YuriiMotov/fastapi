@@ -75,11 +75,13 @@ ENCODERS_BY_TYPE: Dict[Type[Any], Callable[[Any], Any]] = {
     IPv6Network: str,
     NameEmail: str,
     Path: str,
+    PurePath: str,
     Pattern: lambda o: o.pattern,
     SecretBytes: str,
     SecretStr: str,
     set: list,
     UUID: str,
+    UndefinedType: lambda _: None,
     Url: str,
     AnyUrl: str,
 }
@@ -226,12 +228,9 @@ def encode_value(
 
     if isinstance(obj, Enum):
         return obj.value
-    if isinstance(obj, PurePath):
-        return str(obj)
     if isinstance(obj, (str, int, float, type(None))):
         return obj
-    if isinstance(obj, UndefinedType):
-        return None
+
     if isinstance(obj, (list, set, frozenset, GeneratorType, tuple, deque)):
         encoded_list = []
         for item in obj:
