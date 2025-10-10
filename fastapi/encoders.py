@@ -331,13 +331,13 @@ def encode_value(
 
 def encode_dict(
     obj: Dict[Any, Any],
+    custom_encoder: Dict[Any, Callable[[Any], Any]],
     include: Optional[IncEx] = None,
     exclude: Optional[IncEx] = None,
     by_alias: bool = True,
     exclude_unset: bool = False,
     exclude_defaults: bool = False,
     exclude_none: bool = False,
-    custom_encoder: Optional[Dict[Any, Callable[[Any], Any]]] = None,
     sqlalchemy_safe: bool = True,
 ) -> Any:
     encoded_dict = {}
