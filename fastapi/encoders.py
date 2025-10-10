@@ -1,6 +1,6 @@
 import dataclasses
 import datetime
-from collections import defaultdict, deque
+from collections import deque
 from decimal import Decimal
 from enum import Enum
 from ipaddress import (
@@ -14,7 +14,7 @@ from ipaddress import (
 from pathlib import Path, PurePath
 from re import Pattern
 from types import GeneratorType
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Type, Union
 from uuid import UUID
 
 from fastapi.types import IncEx
@@ -83,20 +83,6 @@ ENCODERS_BY_TYPE: Dict[Type[Any], Callable[[Any], Any]] = {
     Url: str,
     AnyUrl: str,
 }
-
-
-def generate_encoders_by_class_tuples(
-    type_encoder_map: Dict[Any, Callable[[Any], Any]],
-) -> Dict[Callable[[Any], Any], Tuple[Any, ...]]:
-    encoders_by_class_tuples: Dict[Callable[[Any], Any], Tuple[Any, ...]] = defaultdict(
-        tuple
-    )
-    for type_, encoder in type_encoder_map.items():
-        encoders_by_class_tuples[encoder] += (type_,)
-    return encoders_by_class_tuples
-
-
-encoders_by_class_tuples = generate_encoders_by_class_tuples(ENCODERS_BY_TYPE)
 
 
 def jsonable_encoder(
@@ -222,7 +208,6 @@ def jsonable_encoder(
     )
 
 
-
 def encode_value(
     obj: Any,
     custom_encoder: Dict[Any, Callable[[Any], Any]],
@@ -235,12 +220,10 @@ def encode_value(
     sqlalchemy_safe: bool = True,
 ) -> Any:
     if custom_encoder:
-        if type(obj) in custom_encoder:
-            return custom_encoder[type(obj)](obj)
-        else:
-            for encoder_type, encoder_instance in custom_encoder.items():
-                if isinstance(obj, encoder_type):
-                    return encoder_instance(obj)
+        encoder = find_encoder(obj, custom_encoder)
+        if encoder:
+            return encoder(obj)
+
     if isinstance(obj, BaseModel):
         # TODO: remove when deprecating Pydantic v1
         encoders: Dict[Any, Any] = {}
@@ -320,11 +303,9 @@ def encode_value(
             )
         return encoded_list
 
-    if type(obj) in ENCODERS_BY_TYPE:
-        return ENCODERS_BY_TYPE[type(obj)](obj)
-    for encoder, classes_tuple in encoders_by_class_tuples.items():
-        if isinstance(obj, classes_tuple):
-            return encoder(obj)
+    encoder = find_encoder(obj, ENCODERS_BY_TYPE)
+    if encoder:
+        return encoder(obj)
 
     try:
         data = dict(obj)
@@ -395,3 +376,19 @@ def encode_dict(
             )
             encoded_dict[encoded_key] = encoded_value
     return encoded_dict
+
+
+def find_encoder(
+    value: Any, encoders: Dict[Any, Callable[[Any], Any]]
+) -> Optional[Callable[[Any], Any]]:
+    # fastpath for exact class match
+    encoder = encoders.get(type(value))
+    if encoder:
+        return encoder
+
+    # fallback to isinstance which uses MRO
+    for encoder_type, encoder in encoders.items():
+        if isinstance(value, encoder_type):
+            return encoder
+
+    return None
