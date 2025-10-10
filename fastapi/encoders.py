@@ -271,7 +271,7 @@ def encode_value(
     if dataclasses.is_dataclass(obj):
         assert not isinstance(obj, type)
         obj_dict = dataclasses.asdict(obj)
-        return encode_value(
+        return encode_dict(
             obj_dict,
             include=include,
             exclude=exclude,
@@ -291,40 +291,17 @@ def encode_value(
     if isinstance(obj, UndefinedType):
         return None
     if isinstance(obj, dict):
-        encoded_dict = {}
-        allowed_keys = set(obj.keys())
-        if include is not None:
-            allowed_keys &= set(include)
-        if exclude is not None:
-            allowed_keys -= set(exclude)
-        for key, value in obj.items():
-            if (
-                (
-                    not sqlalchemy_safe
-                    or (not isinstance(key, str))
-                    or (not key.startswith("_sa"))
-                )
-                and (value is not None or not exclude_none)
-                and key in allowed_keys
-            ):
-                encoded_key = encode_value(
-                    key,
-                    by_alias=by_alias,
-                    exclude_unset=exclude_unset,
-                    exclude_none=exclude_none,
-                    custom_encoder=custom_encoder,
-                    sqlalchemy_safe=sqlalchemy_safe,
-                )
-                encoded_value = encode_value(
-                    value,
-                    by_alias=by_alias,
-                    exclude_unset=exclude_unset,
-                    exclude_none=exclude_none,
-                    custom_encoder=custom_encoder,
-                    sqlalchemy_safe=sqlalchemy_safe,
-                )
-                encoded_dict[encoded_key] = encoded_value
-        return encoded_dict
+        return encode_dict(
+            obj,
+            include=include,
+            exclude=exclude,
+            by_alias=by_alias,
+            exclude_unset=exclude_unset,
+            exclude_defaults=exclude_defaults,
+            exclude_none=exclude_none,
+            custom_encoder=custom_encoder,
+            sqlalchemy_safe=sqlalchemy_safe,
+        )
     if isinstance(obj, (list, set, frozenset, GeneratorType, tuple, deque)):
         encoded_list = []
         for item in obj:
@@ -359,7 +336,7 @@ def encode_value(
         except Exception as e:
             errors.append(e)
             raise ValueError(errors) from e
-    return encode_value(
+    return encode_dict(
         data,
         include=include,
         exclude=exclude,
@@ -370,3 +347,51 @@ def encode_value(
         custom_encoder=custom_encoder,
         sqlalchemy_safe=sqlalchemy_safe,
     )
+
+
+def encode_dict(
+    obj: Dict[Any, Any],
+    include: Optional[IncEx] = None,
+    exclude: Optional[IncEx] = None,
+    by_alias: bool = True,
+    exclude_unset: bool = False,
+    exclude_defaults: bool = False,
+    exclude_none: bool = False,
+    custom_encoder: Optional[Dict[Any, Callable[[Any], Any]]] = None,
+    sqlalchemy_safe: bool = True,
+) -> Any:
+    # Implementation was taken from encode_value as is
+    encoded_dict = {}
+    allowed_keys = set(obj.keys())
+    if include is not None:
+        allowed_keys &= set(include)
+    if exclude is not None:
+        allowed_keys -= set(exclude)
+    for key, value in obj.items():
+        if (
+            (
+                not sqlalchemy_safe
+                or (not isinstance(key, str))
+                or (not key.startswith("_sa"))
+            )
+            and (value is not None or not exclude_none)
+            and key in allowed_keys
+        ):
+            encoded_key = encode_value(
+                key,
+                by_alias=by_alias,
+                exclude_unset=exclude_unset,
+                exclude_none=exclude_none,
+                custom_encoder=custom_encoder,
+                sqlalchemy_safe=sqlalchemy_safe,
+            )
+            encoded_value = encode_value(
+                value,
+                by_alias=by_alias,
+                exclude_unset=exclude_unset,
+                exclude_none=exclude_none,
+                custom_encoder=custom_encoder,
+                sqlalchemy_safe=sqlalchemy_safe,
+            )
+            encoded_dict[encoded_key] = encoded_value
+    return encoded_dict
