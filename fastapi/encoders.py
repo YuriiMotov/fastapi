@@ -224,6 +224,43 @@ def encode_value(
         if encoder:
             return encoder(obj)
 
+    if isinstance(obj, Enum):
+        return obj.value
+    if isinstance(obj, PurePath):
+        return str(obj)
+    if isinstance(obj, (str, int, float, type(None))):
+        return obj
+    if isinstance(obj, UndefinedType):
+        return None
+    if isinstance(obj, (list, set, frozenset, GeneratorType, tuple, deque)):
+        encoded_list = []
+        for item in obj:
+            encoded_list.append(
+                encode_value(
+                    item,
+                    include=include,
+                    exclude=exclude,
+                    by_alias=by_alias,
+                    exclude_unset=exclude_unset,
+                    exclude_defaults=exclude_defaults,
+                    exclude_none=exclude_none,
+                    custom_encoder=custom_encoder,
+                    sqlalchemy_safe=sqlalchemy_safe,
+                )
+            )
+        return encoded_list
+    if isinstance(obj, dict):
+        return encode_dict(
+            obj,
+            include=include,
+            exclude=exclude,
+            by_alias=by_alias,
+            exclude_unset=exclude_unset,
+            exclude_defaults=exclude_defaults,
+            exclude_none=exclude_none,
+            custom_encoder=custom_encoder,
+            sqlalchemy_safe=sqlalchemy_safe,
+        )
     if isinstance(obj, BaseModel):
         # TODO: remove when deprecating Pydantic v1
         encoders: Dict[Any, Any] = {}
@@ -265,43 +302,6 @@ def encode_value(
             custom_encoder=custom_encoder,
             sqlalchemy_safe=sqlalchemy_safe,
         )
-    if isinstance(obj, Enum):
-        return obj.value
-    if isinstance(obj, PurePath):
-        return str(obj)
-    if isinstance(obj, (str, int, float, type(None))):
-        return obj
-    if isinstance(obj, UndefinedType):
-        return None
-    if isinstance(obj, dict):
-        return encode_dict(
-            obj,
-            include=include,
-            exclude=exclude,
-            by_alias=by_alias,
-            exclude_unset=exclude_unset,
-            exclude_defaults=exclude_defaults,
-            exclude_none=exclude_none,
-            custom_encoder=custom_encoder,
-            sqlalchemy_safe=sqlalchemy_safe,
-        )
-    if isinstance(obj, (list, set, frozenset, GeneratorType, tuple, deque)):
-        encoded_list = []
-        for item in obj:
-            encoded_list.append(
-                encode_value(
-                    item,
-                    include=include,
-                    exclude=exclude,
-                    by_alias=by_alias,
-                    exclude_unset=exclude_unset,
-                    exclude_defaults=exclude_defaults,
-                    exclude_none=exclude_none,
-                    custom_encoder=custom_encoder,
-                    sqlalchemy_safe=sqlalchemy_safe,
-                )
-            )
-        return encoded_list
 
     encoder = find_encoder(obj, ENCODERS_BY_TYPE)
     if encoder:
