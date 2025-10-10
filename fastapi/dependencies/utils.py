@@ -152,7 +152,7 @@ def get_param_sub_dependant(
     depends: params.Depends,
     path: str,
     security_scopes: Optional[List[str]] = None,
-    callable_info_cache: CallableInfoCache,
+    callable_info_cache: Optional[CallableInfoCache] = None,
 ) -> Dependant:
     assert depends.dependency
     return get_sub_dependant(
@@ -169,7 +169,7 @@ def get_parameterless_sub_dependant(
     *,
     depends: params.Depends,
     path: str,
-    callable_info_cache: CallableInfoCache,
+    callable_info_cache: Optional[CallableInfoCache] = None,
 ) -> Dependant:
     assert callable(depends.dependency), (
         "A parameter-less dependency must have a callable dependency"
@@ -189,7 +189,7 @@ def get_sub_dependant(
     path: str,
     name: Optional[str] = None,
     security_scopes: Optional[List[str]] = None,
-    callable_info_cache: CallableInfoCache,
+    callable_info_cache: Optional[CallableInfoCache] = None,
 ) -> Dependant:
     security_requirement = None
     security_scopes = security_scopes or []
@@ -273,7 +273,7 @@ def get_flat_params(dependant: Dependant) -> List[ModelField]:
     return path_params + query_params + header_params + cookie_params
 
 
-def get_typed_signature(call: Callable[..., Any]) -> inspect.Signature:
+def _get_typed_signature(call: Callable[..., Any]) -> inspect.Signature:
     signature = inspect.signature(call)
     globalns = getattr(call, "__globals__", {})
     typed_params = [
@@ -317,14 +317,11 @@ def get_dependant(
     callable_info_cache: Optional[CallableInfoCache] = None,
 ) -> Dependant:
     path_param_names = get_path_param_names(path)
-    callable_info_cache = prepare_callable_info_cache(
-        existing_cache=callable_info_cache,
-    )
-    callable_info = get_cached_callable_info(
+    endpoint_signature = get_typed_signature(
         call=call,
         callable_info_cache=callable_info_cache,
     )
-    signature_params = callable_info.typed_signature.parameters
+    signature_params = endpoint_signature.parameters
     dependant = Dependant(
         call=call,
         name=name,
@@ -580,43 +577,7 @@ def add_param_to_fields(*, field: ModelField, dependant: Dependant) -> None:
         dependant.cookie_params.append(field)
 
 
-def prepare_callable_info_cache(
-    call: Optional[Callable[..., Any]] = None,
-    existing_cache: Optional[CallableInfoCache] = None,
-) -> CallableInfoCache:
-    if existing_cache is None:
-        existing_cache = WeakKeyDictionary()
-    if call is not None:
-        get_cached_callable_info(call, existing_cache)
-    return existing_cache
-
-
-def get_cached_callable_info(
-    call: Callable[..., Any],
-    callable_info_cache: CallableInfoCache,
-) -> CallableInfo:
-    try:
-        callable_info = callable_info_cache.get(call)
-    except TypeError:
-        # cannot create weakref, don't add to cache
-        return inspect_callable(call)
-
-    if callable_info is None:
-        callable_info = inspect_callable(call)
-        callable_info_cache.setdefault(call, callable_info)
-    return callable_info
-
-
-def inspect_callable(call: Callable[..., Any]) -> CallableInfo:
-    return CallableInfo(
-        typed_signature=get_typed_signature(call),
-        is_gen_callable=is_gen_callable(call),
-        is_async_gen_callable=is_async_gen_callable(call),
-        is_coroutine_callable=is_coroutine_callable(call),
-    )
-
-
-def is_coroutine_callable(call: Callable[..., Any]) -> bool:
+def _is_coroutine_callable(call: Callable[..., Any]) -> bool:
     if inspect.isroutine(call):
         return iscoroutinefunction(call)
     if inspect.isclass(call):
@@ -625,14 +586,14 @@ def is_coroutine_callable(call: Callable[..., Any]) -> bool:
     return iscoroutinefunction(dunder_call)
 
 
-def is_async_gen_callable(call: Callable[..., Any]) -> bool:
+def _is_async_gen_callable(call: Callable[..., Any]) -> bool:
     if inspect.isasyncgenfunction(call):
         return True
     dunder_call = getattr(call, "__call__", None)  # noqa: B004
     return inspect.isasyncgenfunction(dunder_call)
 
 
-def is_gen_callable(call: Callable[..., Any]) -> bool:
+def _is_gen_callable(call: Callable[..., Any]) -> bool:
     if inspect.isgeneratorfunction(call):
         return True
     dunder_call = getattr(call, "__call__", None)  # noqa: B004
@@ -642,13 +603,13 @@ def is_gen_callable(call: Callable[..., Any]) -> bool:
 async def solve_generator(
     *,
     call: Callable[..., Any],
-    callable_info: CallableInfo,
     stack: AsyncExitStack,
     sub_values: Dict[str, Any],
+    callable_info_cache: Optional[CallableInfoCache] = None,
 ) -> Any:
-    if callable_info.is_gen_callable:
+    if is_gen_callable(call=call, callable_info_cache=callable_info_cache):
         cm = contextmanager_in_threadpool(contextmanager(call)(**sub_values))
-    elif callable_info.is_async_gen_callable:
+    elif is_async_gen_callable(call=call, callable_info_cache=callable_info_cache):
         cm = asynccontextmanager(call)(**sub_values)
     return await stack.enter_async_context(cm)
 
@@ -677,9 +638,6 @@ async def solve_dependencies(
 ) -> SolvedDependency:
     values: Dict[str, Any] = {}
     errors: List[Any] = []
-    callable_info_cache = prepare_callable_info_cache(
-        existing_cache=callable_info_cache,
-    )
     if response is None:
         response = Response()
         del response.headers["content-length"]
@@ -730,22 +688,26 @@ async def solve_dependencies(
             continue
         if sub_dependant.use_cache and sub_dependant.cache_key in dependency_cache:
             solved = dependency_cache[sub_dependant.cache_key]
-        else:
-            callable_info = get_cached_callable_info(
+        elif is_gen_callable(
+            call=call,
+            callable_info_cache=callable_info_cache,
+        ) or is_async_gen_callable(
+            call=call,
+            callable_info_cache=callable_info_cache,
+        ):
+            solved = await solve_generator(
                 call=call,
+                stack=async_exit_stack,
+                sub_values=solved_result.values,
                 callable_info_cache=callable_info_cache,
             )
-            if callable_info.is_gen_callable or callable_info.is_async_gen_callable:
-                solved = await solve_generator(
-                    call=call,
-                    callable_info=callable_info,
-                    stack=async_exit_stack,
-                    sub_values=solved_result.values,
-                )
-            elif callable_info.is_coroutine_callable:
-                solved = await call(**solved_result.values)
-            else:
-                solved = await run_in_threadpool(call, **solved_result.values)
+        elif is_coroutine_callable(
+            call=call,
+            callable_info_cache=callable_info_cache,
+        ):
+            solved = await call(**solved_result.values)
+        else:
+            solved = await run_in_threadpool(call, **solved_result.values)
         if sub_dependant.name is not None:
             values[sub_dependant.name] = solved
         if sub_dependant.cache_key not in dependency_cache:
@@ -1110,3 +1072,82 @@ def get_body_field(
         field_info=BodyFieldInfo(**BodyFieldInfo_kwargs),
     )
     return final_field
+
+
+def init_callable_info_cache() -> CallableInfoCache:
+    return WeakKeyDictionary()
+
+
+def get_typed_signature(
+    call: Callable[..., Any],
+    callable_info_cache: Optional[CallableInfoCache] = None,
+) -> inspect.Signature:
+    callable_info = _get_cached_callable_info(
+        call=call,
+        callable_info_cache=callable_info_cache,
+    )
+    return callable_info.typed_signature
+
+
+def is_gen_callable(
+    call: Callable[..., Any],
+    callable_info_cache: Optional[CallableInfoCache] = None,
+) -> bool:
+    callable_info = _get_cached_callable_info(
+        call=call,
+        callable_info_cache=callable_info_cache,
+    )
+    return callable_info.is_gen_callable
+
+
+def is_async_gen_callable(
+    call: Callable[..., Any],
+    callable_info_cache: Optional[CallableInfoCache] = None,
+) -> bool:
+    callable_info = _get_cached_callable_info(
+        call=call,
+        callable_info_cache=callable_info_cache,
+    )
+    return callable_info.is_async_gen_callable
+
+
+def is_coroutine_callable(
+    call: Callable[..., Any],
+    callable_info_cache: Optional[CallableInfoCache] = None,
+) -> bool:
+    callable_info = _get_cached_callable_info(
+        call=call,
+        callable_info_cache=callable_info_cache,
+    )
+    return callable_info.is_coroutine_callable
+
+
+def _inspect_callable(call: Callable[..., Any]) -> CallableInfo:
+    return CallableInfo(
+        typed_signature=_get_typed_signature(call),
+        is_gen_callable=_is_gen_callable(call),
+        is_async_gen_callable=_is_async_gen_callable(call),
+        is_coroutine_callable=_is_coroutine_callable(call),
+    )
+
+
+def _get_cached_callable_info(
+    call: Callable[..., Any],
+    callable_info_cache: Optional[CallableInfoCache] = None,
+) -> CallableInfo:
+    if callable_info_cache is not None:
+        try:
+            callable_info = callable_info_cache.get(call)
+        except TypeError:
+            # cannot create weakref, don't add to cache
+            return _inspect_callable(call)
+    else:
+        callable_info = None
+
+    # If not cached
+    if callable_info is None:
+        callable_info = _inspect_callable(call)
+        if callable_info_cache is not None:
+            callable_info_cache[call] = callable_info
+
+    return callable_info

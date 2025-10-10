@@ -39,11 +39,11 @@ from fastapi.dependencies.utils import (
     CallableInfoCache,
     _should_embed_body_fields,
     get_body_field,
-    get_cached_callable_info,
     get_dependant,
     get_flat_dependant,
     get_parameterless_sub_dependant,
-    prepare_callable_info_cache,
+    get_typed_signature,
+    init_callable_info_cache,
     solve_dependencies,
 )
 from fastapi.encoders import jsonable_encoder
@@ -316,12 +316,6 @@ def get_request_handler(
     else:
         actual_response_class = response_class
 
-    # callables are not changing between requests, so we can cache them here
-    callable_info_cache = prepare_callable_info_cache(
-        call=dependant.call,
-        existing_cache=callable_info_cache,
-    )
-
     async def app(request: Request) -> Response:
         response: Union[Response, None] = None
         file_stack = request.scope.get("fastapi_middleware_astack")
@@ -450,12 +444,6 @@ def get_websocket_app(
     embed_body_fields: bool = False,
     callable_info_cache: Optional[CallableInfoCache] = None,
 ) -> Callable[[WebSocket], Coroutine[Any, Any, Any]]:
-    # callables are not changing between requests, so we can cache them here
-    callable_info_cache = prepare_callable_info_cache(
-        call=dependant.call,
-        existing_cache=callable_info_cache,
-    )
-
     async def app(websocket: WebSocket) -> None:
         async_exit_stack = websocket.scope.get("fastapi_inner_astack")
         assert isinstance(async_exit_stack, AsyncExitStack), (
@@ -491,7 +479,7 @@ class APIWebSocketRoute(routing.WebSocketRoute):
     ) -> None:
         self.path = path
         self.endpoint = endpoint
-        self.callable_info_cache = prepare_callable_info_cache(call=endpoint)
+        self.callable_info_cache = init_callable_info_cache()
         self.name = get_name(endpoint) if name is None else name
         self.dependencies = list(dependencies or [])
         self.path_regex, self.path_format, self.param_convertors = compile_path(path)
@@ -566,10 +554,10 @@ class APIRoute(routing.Route):
     ) -> None:
         self.path = path
         self.endpoint = endpoint
-        self.callable_info_cache = prepare_callable_info_cache(call=endpoint)
+        self.callable_info_cache = init_callable_info_cache()
         if isinstance(response_model, DefaultPlaceholder):
-            callable_info = get_cached_callable_info(endpoint, self.callable_info_cache)
-            return_annotation = callable_info.typed_signature.return_annotation
+            typed_signature = get_typed_signature(endpoint, self.callable_info_cache)
+            return_annotation = typed_signature.return_annotation
             if lenient_issubclass(return_annotation, Response):
                 response_model = None
             else:
