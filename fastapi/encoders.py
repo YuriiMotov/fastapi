@@ -222,9 +222,7 @@ def encode_value(
         if encoder:
             return encoder(obj)
 
-    if isinstance(obj, Enum):
-        return obj.value
-    if isinstance(obj, (str, int, float, type(None))):
+    if obj is None or isinstance(obj, (str, int, float)):
         return obj
 
     if isinstance(obj, (list, set, frozenset, GeneratorType, tuple, deque)):
