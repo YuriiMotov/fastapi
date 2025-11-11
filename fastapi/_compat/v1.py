@@ -226,7 +226,10 @@ def _model_rebuild(model: Type[BaseModel]) -> None:
 def _model_dump(
     model: BaseModel, mode: Literal["json", "python"] = "json", **kwargs: Any
 ) -> Any:
-    return model.dict(**kwargs)
+    serialized = model.dict(**kwargs)
+    if "__root__" in serialized:
+        return serialized["__root__"]
+    return serialized
 
 
 def _get_model_config(model: BaseModel) -> Any:
