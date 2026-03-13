@@ -34,21 +34,10 @@ jobs:
           path: htmlcov
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ github.event.workflow_run.id }}
-      # Try 5 times to upload coverage to smokeshow
       - name: Upload coverage to Smokeshow
-        run: |
-          for i in 1 2 3 4 5; do
-            if uv run smokeshow upload htmlcov; then
-                echo "Smokeshow upload success!"
-                break
-            fi
-            echo "Smokeshow upload error, sleep 1 sec and try again."
-            sleep 1
-          done
+        run: uv run python scripts/fast_cov.py htmlcov --commit-sha ${{ github.event.workflow_run.head_sha }}
         env:
-          SMOKESHOW_GITHUB_STATUS_DESCRIPTION: Coverage {coverage-percentage}
-          SMOKESHOW_GITHUB_COVERAGE_THRESHOLD: 100
-          SMOKESHOW_GITHUB_CONTEXT: coverage
-          SMOKESHOW_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SMOKESHOW_GITHUB_PR_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
-          SMOKESHOW_AUTH_KEY: ${{ secrets.SMOKESHOW_AUTH_KEY }}
+          FAST_COV_REPO_OWNER: ${{ github.event.repository.owner.login }}
+          FAST_COV_REPO_NAME: ${{ github.event.repository.name }}
+          FAST_COV_API_KEY: ${{ secrets.FAST_COV_API_KEY }}
+          FAST_COV_GH_TOKEN: ${{ secrets.FAST_COV_GH_TOKEN }}
