@@ -41,4 +41,4 @@ jobs:
           FAST_COV_REPO_NAME: ${{ github.event.repository.name }}
           FAST_COV_API_KEY: ${{ secrets.FAST_COV_API_KEY }}
           FAST_COV_GH_TOKEN: ${{ secrets.FAST_COV_GH_TOKEN }}
-          FAST_COV_THRESHOLD: 101
+          FAST_COV_COVERAGE_THRESHOLD: 101
