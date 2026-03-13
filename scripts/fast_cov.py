@@ -27,6 +27,13 @@ def main(
     commit_sha: Annotated[
         str, typer.Option(envvar="FAST_COV_COMMIT_SHA", help="Git commit SHA")
     ],
+    coverage_threshold: Annotated[
+        float,
+        typer.Option(
+            envvar="FAST_COV_COVERAGE_THRESHOLD",
+            help="Minimum coverage percentage to set success status",
+        ),
+    ] = 100.0,
     gh_token: Annotated[
         str,
         typer.Option(
@@ -68,13 +75,18 @@ def main(
     resp_json = resp.json()
     typer.echo(f"Upload response: {resp_json}")
 
+    coverage_val = resp_json.get("coverage")
+    if coverage_val and float(coverage_val) >= coverage_threshold:
+        status_state = "success"
+    else:
+        status_state = "failure"
     status_url = (
         f"https://api.github.com/repos/{repo_owner}/{repo_name}/statuses/{commit_sha}"
     )
     status_resp = httpx.post(
         status_url,
         json={
-            "state": "success",
+            "state": status_state,
             "description": f"Coverage {resp_json['coverage'] or '??'}%",
             "target_url": resp_json["url"],
             "context": "fast-coverage",
