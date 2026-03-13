@@ -47,7 +47,7 @@ def main(
         typer.echo(f"Error: {path} is not a directory", err=True)
         raise typer.Exit(1)
 
-    with TemporaryDirectory(delete=True) as tmp_path:
+    with TemporaryDirectory() as tmp_path:
         tar_file = Path(tmp_path) / "htmlcov.tar.gz"
         with fastar.open(tar_file, "w:gz") as archive:
             for file_path in path.rglob("*"):
