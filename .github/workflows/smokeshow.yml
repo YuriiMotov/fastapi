@@ -1,4 +1,4 @@
-name: Smokeshow
+name: Fast-coverage
 
 on:
   workflow_run:
@@ -9,7 +9,7 @@ permissions:
   statuses: write
 
 jobs:
-  smokeshow:
+  fast-coverage:
     runs-on: ubuntu-latest
 
     steps:
@@ -34,10 +34,11 @@ jobs:
           path: htmlcov
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ github.event.workflow_run.id }}
-      - name: Upload coverage to Smokeshow
+      - name: Upload coverage to Fast-coverage
         run: uv run python scripts/fast_cov.py htmlcov --commit-sha ${{ github.event.workflow_run.head_sha }}
         env:
           FAST_COV_REPO_OWNER: ${{ github.event.repository.owner.login }}
           FAST_COV_REPO_NAME: ${{ github.event.repository.name }}
           FAST_COV_API_KEY: ${{ secrets.FAST_COV_API_KEY }}
           FAST_COV_GH_TOKEN: ${{ secrets.FAST_COV_GH_TOKEN }}
+          FAST_COV_THRESHOLD: 101
