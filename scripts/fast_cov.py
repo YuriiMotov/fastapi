@@ -1,3 +1,4 @@
+import base64
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Annotated
@@ -27,6 +28,13 @@ def main(
     commit_sha: Annotated[
         str, typer.Option(envvar="FAST_COV_COMMIT_SHA", help="Git commit SHA")
     ],
+    invalidate_cache: Annotated[
+        bool,
+        typer.Option(
+            envvar="FAST_COV_INVALIDATE_CACHE",
+            help="Whether to invalidate cache for the uploaded report",
+        ),
+    ] = False,
     coverage_threshold: Annotated[
         float,
         typer.Option(
@@ -57,6 +65,11 @@ def main(
 
         resp = client.post(
             FAST_COV_API_URL,
+            params={
+                "repo_owner": repo_owner,
+                "repo_name": repo_name,
+                "invalidate_cache": str(invalidate_cache).lower(),
+            },
             files={
                 "file_archive": (
                     "htmlcov.tar.gz",
