@@ -9,7 +9,7 @@
     <img src="https://github.com/fastapi/fastapi/actions/workflows/test.yml/badge.svg?event=push&branch=master" alt="Test">
 </a>
 <a href="https://coverage-0cc8740f.fastapicloud.dev/badge/redirect/YuriiMotov/fastapi/">
-    <img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fcoverage-0cc8740f.fastapicloud.dev%2Fbadge%2FYuriiMotov%2Ffastapi.json" alt="Coverage">
+    <img src="https:coverage-0cc8740f.fastapicloud.dev/badge/YuriiMotov/fastapi.svg" alt="Coverage">
 </a>
 <a href="https://pypi.org/project/fastapi">
     <img src="https://img.shields.io/pypi/v/fastapi?color=%2334D058&label=pypi%20package" alt="Package version">
