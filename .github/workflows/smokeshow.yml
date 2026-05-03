@@ -1,4 +1,4 @@
-name: Upload coverage report
+name: Smokeshow
 
 on:
   workflow_run: # zizmor: ignore[dangerous-triggers]
@@ -8,7 +8,7 @@ on:
 permissions: {}
 
 jobs:
-  upload-coverage:
+  smokeshow:
     runs-on: ubuntu-latest
     permissions:
       statuses: write
@@ -38,14 +38,21 @@ jobs:
           path: htmlcov
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ github.event.workflow_run.id }}
-      - name: Upload coverage to Covered server
-        run: uv run covered htmlcov
+      # Try 5 times to upload coverage to smokeshow
+      - name: Upload coverage to Smokeshow
+        run: |
+          for i in 1 2 3 4 5; do
+            if uv run smokeshow upload htmlcov; then
+                echo "Smokeshow upload success!"
+                break
+            fi
+            echo "Smokeshow upload error, sleep 1 sec and try again."
+            sleep 1
+          done
         env:
-          COVERED_API_URL: ${{ secrets.COVERED_API_URL }} # zizmor: ignore[secrets-outside-env]
-          COVERED_API_KEY: ${{ secrets.COVERED_API_KEY }} # zizmor: ignore[secrets-outside-env]
-          COVERED_REPO_OWNER: ${{ github.repository_owner }}
-          COVERED_REPO_NAME: ${{ github.event.repository.name }}
-          COVERED_COMMIT_SHA: ${{ github.event.workflow_run.head_sha }}
-          COVERED_COVERAGE_THRESHOLD: ${{ vars.COVERAGE_THRESHOLD || 100 }}
-          COVERED_GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          COVERED_IS_DEFAULT_BRANCH: ${{ github.event.workflow_run.head_branch == github.event.repository.default_branch }}
+          SMOKESHOW_GITHUB_STATUS_DESCRIPTION: Coverage {coverage-percentage}
+          SMOKESHOW_GITHUB_COVERAGE_THRESHOLD: 100
+          SMOKESHOW_GITHUB_CONTEXT: coverage
+          SMOKESHOW_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SMOKESHOW_GITHUB_PR_HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          SMOKESHOW_AUTH_KEY: ${{ secrets.SMOKESHOW_AUTH_KEY }} # zizmor: ignore[secrets-outside-env]
